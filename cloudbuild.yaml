@@ -1,14 +1,14 @@
 # cloudbuild.yaml
 steps:
-- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-  args:
-    - gcloud
-    - functions
-    - deploy
-    - model-generate # Cloud Functionsのサービス名
-    - --source=. # 現在のディレクトリ (リポジトリのルート) からソースを取得
-    - --runtime=python311
-    - --trigger-http
-    - --allow-unauthenticated # 本番では削除または制限を検討
-    - --entry-point=main # 例: process_data
-    - --region=asia-northeast1 # 例: asia-northeast1
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - model-generate # Cloud Functionsのサービス名
+      - --source=. # 現在のディレクトリ (リポジトリのルート) からソースを取得
+      - --runtime=python311
+      - --trigger-http
+      - --allow-unauthenticated # 本番では削除または制限を検討
+      - --entry-point=main # 例: process_data
+      - --region=asia-northeast1 # 例: asia-northeast1
