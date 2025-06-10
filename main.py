@@ -122,7 +122,7 @@ def model_generate_v2(request):
 
         buffer_view_indices = BufferView(
             buffer=0, byteOffset=index_buffer_byte_offset, byteLength=len(index_buffer_bytes), target=34963)
-        gltf.bufferViews.append(buffer_view_indices) # This was the line with the previous bug in my full code version.
+        gltf.buffers.append(buffer_view_indices) # This was the line with the previous bug in my full code version.
 
         # 3. アクセサ (バッファビュー内のデータへのアクセス方法を定義)
         accessor_vertices = Accessor(
@@ -136,22 +136,21 @@ def model_generate_v2(request):
         gltf.accessors.append(accessor_indices)
 
         # 4. プリミティブ (描画するジオメトリの最小単位)
-        # ★★★ ここが修正箇所です ★★★
         primitive = Primitive(
-            attributes={"POSITION": 0}, # Accessorオブジェクトを直接渡すのではなく、属性名とアクセサのインデックスの辞書を渡す
-            indices=1, # インデックスアクセサ (gltf.accessors[1]) を使用
-            mode=4 # TRIANGLES (三角形リストで描画)
+            attributes={"POSITION": 0}, 
+            indices=1, 
+            mode=4 
         )
-        # メッシュはプリミティブのリストを保持 (この行でリストを作成し、後でglTFに追加)
+        # メッシュはプリミティブのリストを保持
         mesh = Mesh(primitives=[primitive])
-        gltf.meshes.append(mesh) # gltf.meshes.append(Mesh(primitives=[primitive])) ではなくこの形
+        gltf.meshes.append(mesh)
 
         # 6. ノード (メッシュのシーン内での変換・配置情報)
-        node = Node(mesh=0) # gltf.meshes[0] を参照
+        node = Node(mesh=0) 
         gltf.nodes.append(node)
 
         # 7. シーン (ノードの集合)
-        scene = Scene(nodes=[0]) # gltf.nodes[0] を参照
+        scene = Scene(nodes=[0]) 
         gltf.scenes.append(scene)
 
         # 8. デフォルトシーンの設定
@@ -161,7 +160,8 @@ def model_generate_v2(request):
         gltf.asset = Asset(version="2.0", generator="pygltflib")
 
         # --- GLB (glTF Binary) バイナリデータを生成してHTTPレスポンスとして返す ---
-        glb_data = gltf.glb_bytes_representation(binchunk=buffer_data)
+        # ★★★ ここを修正 ★★★
+        glb_data = gltf.as_glb_bytes(bindata=buffer_data) # メソッド名を as_glb_bytes() に変更し、bindata引数を渡す
 
         # 成功時のレスポンス
         return glb_data, 200, response_headers
