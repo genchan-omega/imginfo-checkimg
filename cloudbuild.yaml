@@ -5,7 +5,7 @@ steps:
     - gcloud
     - functions
     - deploy
-    - model-generate
+    - model-generate-v2
     - --source=.
     - --runtime=python311
     - --trigger-http

@@ -1,10 +1,12 @@
+# main.py
+
 import functions_framework
 import json
 import numpy as np
 from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
 
 @functions_framework.http
-def main(request):
+def model-generate-v2(request):
     """
     HTTP リクエストを受け取り、簡単な3Dモデル (立方体) を生成し、GLB形式で返す。
     """
