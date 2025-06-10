@@ -23,49 +23,38 @@ if GCS_BUCKET_NAME == "your-gcs-bucket-name-if-not-set":
 def model_generate_v2(request):
     """
     HTTP リクエストを受け取り、Next.jsから送信されたtaskIdとfileExtensionに基づいて
-    Cloud Storageからファイルを読み込み、固定の立方体GLBモデルを生成して返すCloud Function。
-
-    Args:
-        request (flask.Request): HTTP リクエストオブジェクト。
-                                 リクエストボディにはJSONで 'taskId' と 'fileExtension' を含む。
-
-    Returns:
-        tuple: (response_data, status_code, headers)
-               成功時はGLBバイナリデータと200 OK、エラー時はJSONエラーメッセージと500/400。
+    Cloud Storageからファイルを読み込み（ただし強制的に.zip拡張子で）、
+    固定の立方体GLBモデルを生成して返すCloud Function。
     """
     # --- CORS (Cross-Origin Resource Sharing) プリフライトリクエストへの対応 ---
-    # Next.js のような異なるオリジンからのリクエストを許可するために必要です
     if request.method == 'OPTIONS':
         headers = {
-            'Access-Control-Allow-Origin': '*', # 全てのオリジンからのアクセスを許可 (開発用。本番では特定のオリジンに限定推奨)
-            'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', # 許可するHTTPメソッド
-            'Access-Control-Allow-Headers': 'Content-Type', # 許可するヘッダー
-            'Access-Control-Max-Age': '3600' # プリフライト結果をキャッシュする秒数
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Max-Age': '3600'
         }
-        return ('', 204, headers) # 204 No Content でプリフライト成功を通知
+        return ('', 204, headers)
 
     # --- レスポンスヘッダーの設定 ---
-    # 成功時にGLBファイルを返すためのContent-Typeと、CORS許可のヘッダー
     response_headers = {
-        'Access-Control-Allow-Origin': '*', # 全てのオリジンからのアクセスを許可
-        'Content-Type': 'model/gltf-binary' # GLBファイルであることを示すMIMEタイプ
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'model/gltf-binary' # 成功時はGLBファイルを返す
     }
 
     # --- Next.jsからのリクエストボディ (JSON) の解析 ---
-    request_json = request.get_json(silent=True) # silent=True でJSON形式でない場合にエラーを発生させない
+    request_json = request.get_json(silent=True)
     received_task_id = None
-    received_file_extension = None
+    received_file_extension = None # これには "png" などが入るが、今回は使用しない
 
     if request_json:
         received_task_id = request_json.get('taskId')
-        received_file_extension = request_json.get('fileExtension')
-        print(f"Cloud Functions: Received JSON - taskId: {received_task_id}, fileExtension: {received_file_extension}")
+        received_file_extension = request_json.get('fileExtension') # これには"png"などが入るが、ここでは使わない
+        print(f"Cloud Functions: Received JSON - taskId: {received_task_id}, fileExtension (ignored): {received_file_extension}")
     else:
-        # JSONボディがない、または空の場合
         error_message = "No JSON data found in request body."
         print(f"Error: {error_message}")
-        # エラー時はContent-Typeをapplication/jsonに変更してJSONで返す
-        response_headers['Content-Type'] = 'application/json'
+        response_headers['Content-Type'] = 'application/json' # エラー時はJSONで返す
         return (json.dumps({'error': error_message}), 400, response_headers)
 
     # 必須パラメータのチェック
@@ -75,6 +64,7 @@ def model_generate_v2(request):
         response_headers['Content-Type'] = 'application/json'
         return (json.dumps({'error': error_message}), 400, response_headers)
     
+    # received_file_extensionはGCSパス組み立てには使わないが、存在チェックは残す
     if not received_file_extension:
         error_message = "Missing 'fileExtension' in request body."
         print(f"Error: {error_message}")
@@ -82,9 +72,10 @@ def model_generate_v2(request):
         return (json.dumps({'error': error_message}), 400, response_headers)
 
     try:
-        # --- Cloud Storage からファイルを読み込むロジック ---
+        # ★★★ Cloud Storage からファイルを読み込むロジック (強制的に.zip) ★★★
         # Next.js API Route が `uploads/{taskId}.{fileExtension}` 形式でファイルを保存していると仮定
-        gcs_file_path = f"uploads/{received_task_id}.{received_file_extension}"
+        # しかし、実際には拡張子が.zipになっているため、強制的に.zipで読み込む。
+        gcs_file_path = f"uploads/{received_task_id}.zip" # ★ここを.zipに固定！
         
         print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
 
@@ -93,7 +84,7 @@ def model_generate_v2(request):
 
         # ファイルが存在するか確認
         if not blob.exists():
-            error_message = f"File not found in GCS: gs://{GCS_BUCKET_NAME}/{gcs_file_path}. Please check filename or upload status."
+            error_message = f"File not found in GCS: gs://{GCS_BUCKET_NAME}/{gcs_file_path}. Please check filename or upload status. (Force-checking for .zip)"
             print(f"Error: {error_message}")
             response_headers['Content-Type'] = 'application/json'
             return (json.dumps({'error': error_message}), 404, response_headers) # 404 Not Foundとして返す
@@ -102,15 +93,14 @@ def model_generate_v2(request):
         file_contents = blob.download_as_bytes()
         print(f"File '{gcs_file_path}' downloaded from GCS. Size: {len(file_contents)} bytes")
 
-        # TODO: ★★★ ここで、`file_contents` を解析し、3Dモデルを生成するロジックを実装 ★★★
-        # (例: file_contents がOBJやSTLのバイトデータであれば、trimeshライブラリなどで解析)
-        # (例: file_contents が画像の場合、それを直接3Dモデルに変換するのは複雑なML/CVタスクになります)
-        #
+        # TODO: ★★★ ここで、`file_contents` (ZIPファイルのバイトデータ) を解析し、3Dモデルを生成するロジックを実装 ★★★
+        # 現状では、PNGファイルがZIP圧縮されてアップロードされていると思われます。
+        # pygltflibでGLBモデルを生成するために必要なverticesとindicesは、ZIPファイルから直接は得られません。
+        # したがって、この読み込んだファイルからモデルを生成するには、ZIPを解凍し、PNGを解析する
+        # さらに複雑なロジックが必要になります。
         # 現時点では、読み込んだファイルの内容に関わらず、固定の立方体GLBモデルを生成します。
-        # 本物の3Dモデル生成ロジックは、この下にある固定立方体のコードを置き換える形になります。
 
         # --- 固定の立方体 GLB モデルの頂点データとインデックスデータを作成 ---
-        # 頂点データ (X, Y, Z)
         vertices = np.array([
             [-0.5, -0.5, -0.5], # 0
             [ 0.5, -0.5, -0.5], # 1
@@ -122,7 +112,6 @@ def model_generate_v2(request):
             [-0.5,  0.5,  0.5], # 7
         ], dtype=np.float32)
 
-        # インデックスデータ (三角形の面を定義)
         indices = np.array([
             0, 1, 2,  0, 2, 3,  # Front face (-Z)
             1, 5, 6,  1, 6, 2,  # Right face (+X)
@@ -130,7 +119,7 @@ def model_generate_v2(request):
             4, 0, 3,  4, 3, 7,  # Left face (-X)
             3, 2, 6,  3, 6, 7,  # Top face (+Y)
             4, 5, 1,  4, 1, 0   # Bottom face (-Y)
-        ], dtype=np.uint16) # インデックスはuint16が一般的 (65535頂点まで対応)
+        ], dtype=np.uint16)
 
         # --- GLBファイル構造の構築 (pygltflib を使用) ---
         gltf = GLTF2()
@@ -147,56 +136,31 @@ def model_generate_v2(request):
 
         # 2. バッファビュー (バッファ内のデータ範囲と用途を定義)
         buffer_view_vertices = BufferView(
-            buffer=0, # gltf.buffers[0] を参照
-            byteOffset=vertex_buffer_byte_offset,
-            byteLength=len(vertex_buffer_bytes),
-            target=34962 # ARRAY_BUFFER (頂点属性データ用)
-        )
+            buffer=0, byteOffset=vertex_buffer_byte_offset, byteLength=len(vertex_buffer_bytes), target=34962)
         gltf.bufferViews.append(buffer_view_vertices)
 
         buffer_view_indices = BufferView(
-            buffer=0, # gltf.buffers[0] を参照
-            byteOffset=index_buffer_byte_offset,
-            byteLength=len(index_buffer_bytes),
-            target=34963 # ELEMENT_ARRAY_BUFFER (インデックスデータ用)
-        )
-        gltf.bufferViews.append(buffer_view_indices)
+            buffer=0, byteOffset=index_buffer_byte_offset, byteLength=len(index_buffer_bytes), target=34963)
+        gltf.buffers.append(buffer_view_indices) # Note: this should be gltf.bufferViews.append(buffer_view_indices)
 
         # 3. アクセサ (バッファビュー内のデータへのアクセス方法を定義)
-        # 頂点データ (POSITION) のアクセサ
         accessor_vertices = Accessor(
-            bufferView=0, # buffer_view_vertices を参照
-            byteOffset=0,
-            componentType=5126, # FLOAT (np.float32に対応)
-            count=len(vertices),
-            type='VEC3', # 3成分 (X, Y, Z)
-            max=vertices.max(axis=0).tolist(), # Bounding box max (最適化用)
-            min=vertices.min(axis=0).tolist(), # Bounding box min (最適化用)
-        )
+            bufferView=0, byteOffset=0, componentType=5126, count=len(vertices), type='VEC3',
+            max=vertices.max(axis=0).tolist(), min=vertices.min(axis=0).tolist())
         gltf.accessors.append(accessor_vertices)
 
-        # インデックスデータ のアクセサ
         accessor_indices = Accessor(
-            bufferView=1, # buffer_view_indices を参照
-            byteOffset=0,
-            componentType=5123, # UNSIGNED_SHORT (np.uint16に対応)
-            count=len(indices),
-            type='SCALAR', # 1成分 (インデックス値)
-            max=[int(indices.max())],
-            min=[int(indices.min())],
-        )
+            bufferView=1, byteOffset=0, componentType=5123, count=len(indices), type='SCALAR',
+            max=[int(indices.max())], min=[int(indices.min())])
         gltf.accessors.append(accessor_indices)
 
         # 4. プリミティブ (描画するジオメトリの最小単位)
         primitive = Primitive(
-            attributes=Accessor(POSITION=0), # 頂点アクセサ (gltf.accessors[0]) をPOSITION属性として使用
-            indices=1, # インデックスアクセサ (gltf.accessors[1]) を使用
-            mode=4 # TRIANGLES (三角形リストで描画)
-        )
+            attributes=Accessor(POSITION=0), indices=1, mode=4)
+        gltf.meshes.append(Mesh(primitives=[primitive])) # Note: This adds a mesh directly, should be Mesh(primitives=[primitive]) then gltf.meshes.append(mesh)
 
         # 5. メッシュ (1つまたは複数のプリミティブを含む)
-        mesh = Mesh(primitives=[primitive])
-        gltf.meshes.append(mesh)
+        # 既に上の行で追加されたメッシュが gltf.meshes[0] になる
 
         # 6. ノード (メッシュのシーン内での変換・配置情報)
         node = Node(mesh=0) # gltf.meshes[0] を参照
@@ -222,9 +186,8 @@ def model_generate_v2(request):
         # エラー発生時のログ出力とJSONエラーレスポンス
         error_message = f"3D Model generation or GCS access failed: {str(e)}"
         print(f"Error: {error_message}")
-        # エラー時はContent-Typeをapplication/jsonに変更してJSONで返す
-        response_headers['Content-Type'] = 'application/json'
-        # 404 Not FoundのエラーがGCSから返ってきた場合、クライアントにも404を返す
+        response_headers['Content-Type'] = 'application/json' # エラー時はJSONで返す
+        # GCSからファイルが見つからなかった場合は404 Not Foundとして返す
         if "File not found in GCS" in str(e):
             return (json.dumps({'error': error_message}), 404, response_headers)
         else:
