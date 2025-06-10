@@ -1,8 +1,7 @@
-from flask import Flask
+# index.py
 
-app = Flask(__name__)
-print("here")
+def main():
+  print("Hello, world!!!")
 
-@app.route("/")
-def hello_world():
-  return "<p>Hello, World!</p>"
+if __name__ == "__main__":
+  main()
