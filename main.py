@@ -1,28 +1,26 @@
 # main.py
+
 import functions_framework
 import json
-import numpy as np
-from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
-from google.cloud import storage 
-import os 
-import io # ★追加: io モジュールをインポート
+# 不要なインポートは削除
+# import numpy as np 
+# from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
+# from google.cloud import storage 
+# import os 
+# import io 
 
-# Cloud Storage クライアントの初期化
-storage_client = storage.Client()
-
-# Cloud Storage バケット名
-GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "your-gcs-bucket-name-if-not-set")
-if GCS_BUCKET_NAME == "your-gcs-bucket-name-if-not-set":
-    print("WARNING: GCS_BUCKET_NAME environment variable is not set in Cloud Functions. Using placeholder. Please set it in Cloud Build or function configuration.")
+# 不要な初期化は削除
+# storage_client = storage.Client()
+# GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "your-gcs-bucket-name-if-not-set")
+# if GCS_BUCKET_NAME == "your-gcs-bucket-name-if-not-set": /* ... */
 
 @functions_framework.http
 def model_generate_v2(request):
     """
-    HTTP リクエストを受け取り、Next.jsから送信されたtaskIdとfileExtensionに基づいて
-    Cloud Storageからファイルを読み込み（`uploads/UUID.EXT`形式）、
-    固定の立方体GLBモデルを生成して返すCloud Function。
+    HTTP リクエストを受け取り、"Hello world" という文字列をJSONで返すCloud Function。
+    GCSからのファイル読み込みや3Dモデル生成は行いません。
     """
-    # CORS プリフライトリクエストへの対応
+    # CORS プリフライトリクエストへの対応 (そのまま残す)
     if request.method == 'OPTIONS':
         headers = {
             'Access-Control-Allow-Origin': '*',
@@ -32,10 +30,10 @@ def model_generate_v2(request):
         }
         return ('', 204, headers)
 
-    # レスポンスヘッダーの設定
+    # レスポンスヘッダーの設定 (JSONを返すためContent-Typeをapplication/jsonにする)
     response_headers = {
         'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'model/gltf-binary' 
+        'Content-Type': 'application/json' # JSONを返すことを明確にする
     }
 
     request_json = request.get_json(silent=True)
@@ -49,132 +47,36 @@ def model_generate_v2(request):
     else:
         error_message = "No JSON data found in request body."
         print(f"Error: {error_message}")
-        response_headers['Content-Type'] = 'application/json'
         return (json.dumps({'error': error_message}), 400, response_headers)
 
+    # taskIdとfileExtensionの存在チェックは、受け取ったかどうかの確認のため残す
     if not received_task_id:
         error_message = "Missing 'taskId' in request body."
         print(f"Error: {error_message}")
-        response_headers['Content-Type'] = 'application/json'
         return (json.dumps({'error': error_message}), 400, response_headers)
     
     if not received_file_extension:
         error_message = "Missing 'fileExtension' in request body."
         print(f"Error: {error_message}")
-        response_headers['Content-Type'] = 'application/json'
         return (json.dumps({'error': error_message}), 400, response_headers)
 
     try:
-        # Cloud Storage からファイルを読み込むロジック
-        gcs_file_path = f"uploads/{received_task_id}.{received_file_extension}" 
-        
-        print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
+        # --- GCSからのファイル読み込み、3Dモデル生成のロジックは一切行わない ---
+        # print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
+        # bucket = storage_client.bucket(GCS_BUCKET_NAME); blob = bucket.blob(gcs_file_path); /* ... */
 
-        bucket = storage_client.bucket(GCS_BUCKET_NAME)
-        blob = bucket.blob(gcs_file_path)
+        # --- "Hello world" という文字列を含むJSONレスポンスを返す ---
+        response_data = {
+            "message": "Hello world from Cloud Functions!",
+            "received_task_id": received_task_id,
+            "received_file_extension": received_file_extension # 受信確認のために含める
+        }
+        print(f"Cloud Functions: Responding with: {response_data}")
 
-        if not blob.exists():
-            error_message = f"File not found in GCS: gs://{GCS_BUCKET_NAME}/{gcs_file_path}. Please check filename or upload status. (Expected path: {gcs_file_path})"
-            print(f"Error: {error_message}")
-            response_headers['Content-Type'] = 'application/json'
-            return (json.dumps({'error': error_message}), 404, response_headers)
-
-        file_contents = blob.download_as_bytes()
-        print(f"File '{gcs_file_path}' downloaded from GCS. Size: {len(file_contents)} bytes")
-
-        # --- 固定の立方体 GLB モデルの頂点データとインデックスデータを作成 ---
-        vertices = np.array([
-            [-0.5, -0.5, -0.5], # 0
-            [ 0.5, -0.5, -0.5], # 1
-            [ 0.5,  0.5, -0.5], # 2
-            [-0.5,  0.5, -0.5], # 3
-            [-0.5, -0.5,  0.5], # 4
-            [ 0.5, -0.5,  0.5], # 5
-            [ 0.5,  0.5,  0.5], # 6
-            [-0.5,  0.5,  0.5], # 7
-        ], dtype=np.float32)
-
-        indices = np.array([
-            0, 1, 2,  0, 2, 3,  # Front face (-Z)
-            1, 5, 6,  1, 6, 2,  # Right face (+X)
-            5, 4, 7,  5, 7, 6,  # Back face (+Z)
-            4, 0, 3,  4, 3, 7,  # Left face (-X)
-            3, 2, 6,  3, 6, 7,  # Top face (+Y)
-            4, 5, 1,  4, 1, 0   # Bottom face (-Y)
-        ], dtype=np.uint16)
-
-        # --- GLBファイル構造の構築 (pygltflib を使用) ---
-        gltf = GLTF2()
-
-        # 1. バッファ (実際のバイナリデータ: 頂点とインデックスを結合)
-        vertex_buffer_byte_offset = 0
-        vertex_buffer_bytes = vertices.tobytes()
-        index_buffer_byte_offset = len(vertex_buffer_bytes)
-        index_buffer_bytes = indices.tobytes()
-
-        buffer_data = vertex_buffer_bytes + index_buffer_bytes
-        buffer = Buffer(byteLength=len(buffer_data))
-        gltf.buffers.append(buffer)
-
-        # 2. バッファビュー (バッファ内のデータ範囲と用途を定義)
-        buffer_view_vertices = BufferView(
-            buffer=0, byteOffset=vertex_buffer_byte_offset, byteLength=len(vertex_buffer_bytes), target=34962)
-        gltf.bufferViews.append(buffer_view_vertices)
-
-        buffer_view_indices = BufferView(
-            buffer=0, byteOffset=index_buffer_byte_offset, byteLength=len(index_buffer_bytes), target=34963)
-        gltf.buffers.append(buffer_view_indices)
-
-        # 3. アクセサ (バッファビュー内のデータへのアクセス方法を定義)
-        accessor_vertices = Accessor(
-            bufferView=0, byteOffset=0, componentType=5126, count=len(vertices), type='VEC3',
-            max=vertices.max(axis=0).tolist(), min=vertices.min(axis=0).tolist())
-        gltf.accessors.append(accessor_vertices)
-
-        accessor_indices = Accessor(
-            bufferView=1, byteOffset=0, componentType=5123, count=len(indices), type='SCALAR',
-            max=[int(indices.max())], min=[int(indices.min())])
-        gltf.accessors.append(accessor_indices)
-
-        # 4. プリミティブ (描画するジオメトリの最小単位)
-        primitive = Primitive(
-            attributes={"POSITION": 0}, 
-            indices=1, 
-            mode=4 
-        )
-        mesh = Mesh(primitives=[primitive])
-        gltf.meshes.append(mesh)
-
-        # 6. ノード (メッシュのシーン内での変換・配置情報)
-        node = Node(mesh=0) 
-        gltf.nodes.append(node)
-
-        # 7. シーン (ノードの集合)
-        scene = Scene(nodes=[0]) 
-        gltf.scenes.append(scene)
-
-        # 8. デフォルトシーンの設定
-        gltf.scene = 0
-
-        # 9. アセット情報 (glTFファイルのメタデータ)
-        gltf.asset = Asset(version="2.0", generator="pygltflib")
-
-        # --- GLB (glTF Binary) バイナリデータを生成してHTTPレスポンスとして返す ---
-        # ★★★ ここが修正箇所です ★★★
-        # io.BytesIOを使い、gltf.save()でメモリに書き込み、その内容を取得する
-        glb_buffer = io.BytesIO()
-        gltf.save(glb_buffer, binchunk=buffer_data) # save()メソッドを呼び出す
-        glb_data = glb_buffer.getvalue() # 書き込んだ内容を取得
-
-        # 成功時のレスポンス
-        return glb_data, 200, response_headers
+        return (json.dumps(response_data), 200, response_headers)
 
     except Exception as e:
         # エラー発生時のログ出力とJSONエラーレスポンス
-        error_message = f"3D Model generation or GCS access failed: {str(e)}"
+        error_message = f"Unexpected error in Cloud Functions (simple mode): {str(e)}"
         print(f"Error: {error_message}")
-        response_headers['Content-Type'] = 'application/json' 
-        if "File not found in GCS" in str(e):
-            return (json.dumps({'error': error_message}), 404, response_headers)
-        else:
-            return (json.dumps({'error': error_message}), 500, response_headers)
+        return (json.dumps({'error': error_message}), 500, response_headers)
