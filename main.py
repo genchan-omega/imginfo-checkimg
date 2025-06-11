@@ -121,10 +121,11 @@ def model_generate_v2(request):
             buffer=0, byteOffset=vertex_buffer_byte_offset, byteLength=len(vertex_buffer_bytes), target=34962)
         gltf.bufferViews.append(buffer_view_vertices)
 
-        # ★★★ ここを修正 ★★★
+        # ★★★ ここが修正箇所です ★★★
         buffer_view_indices = BufferView(
             buffer=0, byteOffset=index_buffer_byte_offset, byteLength=len(index_buffer_bytes), target=34963)
         gltf.bufferViews.append(buffer_view_indices) # ← 正しいリストに append する
+
 
         # 3. アクセサ (バッファビュー内のデータへのアクセス方法を定義)
         accessor_vertices = Accessor(
