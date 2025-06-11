@@ -12,7 +12,7 @@ steps:
     - --allow-unauthenticated
     - --entry-point=model_generate_v2
     - --region=asia-northeast1
-    - --set-env-vars=GCS_BUCKET_NAME=gcf-v2-uploads-350672083698.asia-northeast1.cloudfunctions.appspot.com # ★ここに正しいバケット名を設定！
+    - --set-env-vars=GCS_BUCKET_NAME=model-raw-img
 # 以下を追加
 options:
   default_logs_bucket_behavior: REGIONAL_USER_OWNED_BUCKET
