@@ -160,8 +160,9 @@ def model_generate_v2(request):
         gltf.asset = Asset(version="2.0", generator="pygltflib")
 
         # --- GLB (glTF Binary) バイナリデータを生成してHTTPレスポンスとして返す ---
-        # ★★★ ここを修正 ★★★
-        glb_data = gltf.as_glb_bytes(bindata=buffer_data) # メソッド名を as_glb_bytes() に変更し、bindata引数を渡す
+        # ★★★ ここが修正箇所です ★★★
+        glb_data = gltf.save_json(filename=None, binchunk=buffer_data)
+
 
         # 成功時のレスポンス
         return glb_data, 200, response_headers
