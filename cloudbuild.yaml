@@ -10,7 +10,7 @@ steps:
     - --runtime=python311
     - --trigger-http
     - --allow-unauthenticated
-    - --entry-point=imginfo-checkimg
+    - --entry-point=checkimg
     - --region=asia-northeast1
     - --set-env-vars=GCS_BUCKET_NAME=checkimg
 # 以下を追加

@@ -14,7 +14,7 @@ if GCS_BUCKET_NAME == "your-gcs-bucket-name-if-not-set":
     print("WARNING: GCS_BUCKET_NAME environment variable is not set in Cloud Functions. Using placeholder. Please set it in Cloud Build or function configuration.")
 
 @functions_framework.http
-def model_generate_v2(request):
+def checkimg(request):
     """
     HTTP リクエストを受け取り、Cloud Storageから画像を読み込み、/tmpに保存し、
     その画像データ（バイナリ）をそのままNext.jsに返すCloud Function。
