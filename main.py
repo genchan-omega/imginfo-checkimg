@@ -2,25 +2,25 @@
 
 import functions_framework
 import json
-# 不要なインポートは削除
-# import numpy as np 
-# from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
-# from google.cloud import storage 
-# import os 
-# import io 
+# 画像保存のために必要なモジュールを再度インポート
+from google.cloud import storage 
+import os 
 
-# 不要な初期化は削除
-# storage_client = storage.Client()
-# GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "your-gcs-bucket-name-if-not-set")
-# if GCS_BUCKET_NAME == "your-gcs-bucket-name-if-not-set": /* ... */
+# Cloud Storage クライアントの初期化 (画像保存のために必要)
+storage_client = storage.Client()
+
+# Cloud Storage バケット名 (画像保存のために必要)
+GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "your-gcs-bucket-name-if-not-set")
+if GCS_BUCKET_NAME == "your-gcs-bucket-name-if-not-set":
+    print("WARNING: GCS_BUCKET_NAME environment variable is not set in Cloud Functions. Using placeholder. Please set it in Cloud Build or function configuration.")
 
 @functions_framework.http
 def model_generate_v2(request):
     """
-    HTTP リクエストを受け取り、"Hello world" という文字列をJSONで返すCloud Function。
-    GCSからのファイル読み込みや3Dモデル生成は行いません。
+    HTTP リクエストを受け取り、Cloud Storageから画像を読み込み、/tmpに保存し、
+    その後 "Hello world" という文字列をJSONで返すCloud Function。
     """
-    # CORS プリフライトリクエストへの対応 (そのまま残す)
+    # CORS プリフライトリクエストへの対応
     if request.method == 'OPTIONS':
         headers = {
             'Access-Control-Allow-Origin': '*',
@@ -49,7 +49,7 @@ def model_generate_v2(request):
         print(f"Error: {error_message}")
         return (json.dumps({'error': error_message}), 400, response_headers)
 
-    # taskIdとfileExtensionの存在チェックは、受け取ったかどうかの確認のため残す
+    # taskIdとfileExtensionの存在チェック
     if not received_task_id:
         error_message = "Missing 'taskId' in request body."
         print(f"Error: {error_message}")
@@ -61,15 +61,35 @@ def model_generate_v2(request):
         return (json.dumps({'error': error_message}), 400, response_headers)
 
     try:
-        # --- GCSからのファイル読み込み、3Dモデル生成のロジックは一切行わない ---
-        # print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
-        # bucket = storage_client.bucket(GCS_BUCKET_NAME); blob = bucket.blob(gcs_file_path); /* ... */
+        # --- 画像の保存操作を追加 (Cloud Storageからの読み込みと/tmpへの書き込み) ---
+        # 1. GCSからファイルを読み込む
+        gcs_file_path = f"uploads/{received_task_id}.{received_file_extension}" 
+        print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
 
-        # --- "Hello world" という文字列を含むJSONレスポンスを返す ---
+        bucket = storage_client.bucket(GCS_BUCKET_NAME)
+        blob = bucket.blob(gcs_file_path)
+
+        if not blob.exists():
+            error_message = f"File not found in GCS: gs://{GCS_BUCKET_NAME}/{gcs_file_path}. Please check filename or upload status."
+            print(f"Error: {error_message}")
+            response_headers['Content-Type'] = 'application/json'
+            return (json.dumps({'error': error_message}), 404, response_headers) # 404 Not Foundとして返す
+
+        file_contents = blob.download_as_bytes()
+        print(f"File '{gcs_file_path}' downloaded from GCS. Size: {len(file_contents)} bytes")
+
+        # 2. 読み込んだファイルを /tmp ディレクトリに保存
+        # Cloud Functions の一時ファイルは /tmp に保存されます
+        local_temp_file_path = os.path.join("/tmp", f"{received_task_id}.{received_file_extension}")
+        with open(local_temp_file_path, "wb") as f:
+            f.write(file_contents)
+        print(f"File successfully saved to local /tmp: {local_temp_file_path}")
+
+        # --- "Hello world" という文字列を含むJSONレスポンスを返す (変更なし) ---
         response_data = {
             "message": "Hello world from Cloud Functions!",
             "received_task_id": received_task_id,
-            "received_file_extension": received_file_extension # 受信確認のために含める
+            "received_file_extension": received_file_extension 
         }
         print(f"Cloud Functions: Responding with: {response_data}")
 
@@ -77,6 +97,11 @@ def model_generate_v2(request):
 
     except Exception as e:
         # エラー発生時のログ出力とJSONエラーレスポンス
-        error_message = f"Unexpected error in Cloud Functions (simple mode): {str(e)}"
+        error_message = f"Unexpected error in Cloud Functions (image save mode): {str(e)}"
         print(f"Error: {error_message}")
-        return (json.dumps({'error': error_message}), 500, response_headers)
+        response_headers['Content-Type'] = 'application/json' 
+        # GCSからファイルが見つからなかった場合は404 Not Foundとして返す
+        if "File not found in GCS" in str(e) or ("Access denied" in str(e) and "storage.googleapis.com" in str(e)): # 403 Access Deniedもここで捕捉
+            return (json.dumps({'error': error_message}), 404, response_headers)
+        else:
+            return (json.dumps({'error': error_message}), 500, response_headers)
