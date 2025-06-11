@@ -7,7 +7,7 @@ from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node
 from google.cloud import storage 
 import os 
 import io 
-import time # ★追加: time モジュールをインポート (sleepのため)
+import time 
 
 # Cloud Storage クライアントの初期化
 storage_client = storage.Client()
@@ -73,12 +73,14 @@ def model_generate_v2(request):
         # Cloud Storage からファイルを読み込むロジック
         gcs_file_path = f"uploads/{received_task_id}.{received_file_extension}" 
         
+        print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
+
         bucket = storage_client.bucket(GCS_BUCKET_NAME)
         blob = bucket.blob(gcs_file_path)
 
-        # ★★★ ファイルが存在しない場合の、リトライロジック ★★★
-        max_retries = 5 # 最大リトライ回数
-        retry_delay_seconds = 2 # リトライ間の待機時間 (秒)
+        # ファイルが存在しない場合の、リトライロジック
+        max_retries = 5 
+        retry_delay_seconds = 2 
 
         file_found = False
         for attempt in range(max_retries):
@@ -89,9 +91,9 @@ def model_generate_v2(request):
                 break
             else:
                 print(f"Cloud Functions: File '{gcs_file_path}' not found on attempt {attempt + 1}. Retrying in {retry_delay_seconds} seconds...")
-                time.sleep(retry_delay_seconds) # 数秒待機
+                time.sleep(retry_delay_seconds) 
 
-        if not file_found: # 全リトライ後も見つからなければエラー
+        if not file_found: 
             error_message = f"File not found in GCS after {max_retries} attempts: gs://{GCS_BUCKET_NAME}/{gcs_file_path}. Please check filename or upload status. (Expected path: {gcs_file_path})"
             print(f"Error: {error_message}")
             response_headers['Content-Type'] = 'application/json'
@@ -187,7 +189,8 @@ def model_generate_v2(request):
         # --- GLB (glTF Binary) バイナリデータを生成してHTTPレスポンスとして返す ---
         gltf.binary_blob = buffer_data 
         glb_buffer = io.BytesIO()
-        gltf.save(glb_buffer, binchunk=buffer_data) 
+        # ★★★ ここを修正：binchunk=buffer_data 引数を削除 ★★★
+        gltf.save(glb_buffer) # binchunk引数を削除
         glb_data = glb_buffer.getvalue() 
 
         # 成功時のレスポンス
