@@ -2,7 +2,6 @@
 
 import functions_framework
 import json
-# 画像保存のために必要なモジュールを再度インポート
 from google.cloud import storage 
 import os 
 
@@ -65,6 +64,7 @@ def model_generate_v2(request):
         # 1. GCSからファイルを読み込む
         gcs_file_path = f"uploads/{received_task_id}.{received_file_extension}" 
         print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
+        gcs_file_path = f"uploads/Figure_1.png"
 
         bucket = storage_client.bucket(GCS_BUCKET_NAME)
         blob = bucket.blob(gcs_file_path)
