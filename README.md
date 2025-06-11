@@ -4,4 +4,4 @@
 
 - 動作確認部分を担う
 
-- [サイトURL](https://imginfo.vercel.app/)
+- [サイトURL](https://imginfo.vercel.app/) 
