@@ -1,27 +1,26 @@
 # main.py
-
 import functions_framework
 import json
+import numpy as np
+from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
 from google.cloud import storage 
 import os 
-import numpy as np 
-from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
 import io 
 
 # Cloud Storage クライアントの初期化
 storage_client = storage.Client()
 
-# Cloud Storage バケット名: 環境変数から取得する形式に戻す
+# Cloud Storage バケット名
 GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "your-gcs-bucket-name-if-not-set")
 if GCS_BUCKET_NAME == "your-gcs-bucket-name-if-not-set":
     print("WARNING: GCS_BUCKET_NAME environment variable is not set in Cloud Functions. Using placeholder. Please set it in Cloud Build or function configuration.")
 
-
 @functions_framework.http
 def model_generate_v2(request):
     """
-    HTTP リクエストを受け取り、Cloud Storageから動的にファイルを読み込み、/tmpに保存し、
-    その後固定の立方体GLBモデルを返すCloud Function。
+    HTTP リクエストを受け取り、Next.jsから送信されたtaskIdとfileExtensionに基づいて
+    Cloud Storageからファイルを読み込み（`uploads/UUID.EXT`形式）、
+    固定の立方体GLBモデルを生成して返すCloud Function。
     """
     # CORS プリフライトリクエストへの対応
     if request.method == 'OPTIONS':
@@ -33,10 +32,10 @@ def model_generate_v2(request):
         }
         return ('', 204, headers)
 
-    # レスポンスヘッダーの設定 (成功時はGLB、エラー時はJSON)
+    # レスポンスヘッダーの設定
     response_headers = {
         'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'model/gltf-binary' # デフォルトはGLBを想定
+        'Content-Type': 'model/gltf-binary' 
     }
 
     request_json = request.get_json(silent=True)
@@ -66,9 +65,9 @@ def model_generate_v2(request):
         return (json.dumps({'error': error_message}), 400, response_headers)
 
     try:
-        # --- GCSからのファイル読み込み (動的なパスに戻す) ---
-        # Next.js API Route と同じパス形式 `uploads/UUID.EXT` で読み込む
+        # Cloud Storage からファイルを読み込むロジック
         gcs_file_path = f"uploads/{received_task_id}.{received_file_extension}" 
+        
         print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path}")
 
         bucket = storage_client.bucket(GCS_BUCKET_NAME)
@@ -77,20 +76,13 @@ def model_generate_v2(request):
         if not blob.exists():
             error_message = f"File not found in GCS: gs://{GCS_BUCKET_NAME}/{gcs_file_path}. Please check filename or upload status. (Expected path: {gcs_file_path})"
             print(f"Error: {error_message}")
-            response_headers['Content-Type'] = 'application/json' # エラー時はJSONで返す
-            return (json.dumps({'error': error_message}), 404, response_headers) # 404 Not Foundとして返す
+            response_headers['Content-Type'] = 'application/json'
+            return (json.dumps({'error': error_message}), 404, response_headers)
 
         file_contents = blob.download_as_bytes()
         print(f"File '{gcs_file_path}' downloaded from GCS. Size: {len(file_contents)} bytes")
 
-        # 2. 読み込んだファイルを /tmp ディレクトリに保存 (確認のため)
-        local_temp_file_path = os.path.join("/tmp", f"{received_task_id}.{received_file_extension}")
-        with open(local_temp_file_path, "wb") as f:
-            f.write(file_contents)
-        print(f"File successfully saved to local /tmp: {local_temp_file_path}")
-
         # --- 固定の立方体 GLB モデルの頂点データとインデックスデータを作成 ---
-        # この部分はファイルの内容に関わらず、固定のモデルを生成します。
         vertices = np.array([
             [-0.5, -0.5, -0.5], # 0
             [ 0.5, -0.5, -0.5], # 1
@@ -117,7 +109,7 @@ def model_generate_v2(request):
         # 1. バッファ (実際のバイナリデータ: 頂点とインデックスを結合)
         vertex_buffer_byte_offset = 0
         vertex_buffer_bytes = vertices.tobytes()
-        index_buffer_byte_offset = len(vertex_buffer_bytes)
+        index_buffer_byte_offset = len(index_buffer_bytes)
         index_buffer_bytes = indices.tobytes()
 
         buffer_data = vertex_buffer_bytes + index_buffer_bytes
@@ -168,12 +160,16 @@ def model_generate_v2(request):
         gltf.asset = Asset(version="2.0", generator="pygltflib")
 
         # --- GLB (glTF Binary) バイナリデータを生成してHTTPレスポンスとして返す ---
-        # io.BytesIOを使い、gltf.save()でメモリに書き込み、その内容を取得する
+        # ★★★ ここが修正箇所です ★★★
+        # pygltflibのGLB変換の正しい手順
+        # 1. binary_blobにデータを設定
+        gltf.binary_blob = buffer_data 
+        # 2. save()メソッドをio.BytesIOに書き込み、その内容を取得
         glb_buffer = io.BytesIO()
-        gltf.save(glb_buffer, binchunk=buffer_data) # save()メソッドを呼び出す
-        glb_data = glb_buffer.getvalue() # 書き込んだ内容を取得
+        gltf.save(glb_buffer) # binchunk引数を削除
+        glb_data = glb_buffer.getvalue() 
 
-        # 成功時のレスポンス (Content-Typeはmodel/gltf-binary)
+        # 成功時のレスポンス
         return glb_data, 200, response_headers
 
     except Exception as e:
