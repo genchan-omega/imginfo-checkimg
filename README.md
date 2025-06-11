@@ -1,7 +1,13 @@
 # 概要
 
-- 講義用のレポジトリ
+- 画像情報メディア特論Ⅰ用のレポジトリ
 
 - 動作確認部分を担う
 
-- [サイトURL](https://imginfo.vercel.app/) 
+# 関連リンク
+
+- [サイトURL](https://imginfo.vercel.app/)
+
+- [動作確認部分](https://github.com/genchan-omega/imginfo-makemodel)
+
+- [モデル生成部分](https://github.com/genchan-omega/imginfo-makemodel)
