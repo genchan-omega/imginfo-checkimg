@@ -1,5 +1,4 @@
 # main.py
-
 import functions_framework
 import json
 import numpy as np 
@@ -7,7 +6,7 @@ from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node
 from google.cloud import storage 
 import os 
 import io 
-import time # ★追加: time モジュールをインポート (sleepのため)
+import time # sleepのため
 
 # Cloud Storage クライアントの初期化
 storage_client = storage.Client()
@@ -37,6 +36,9 @@ def model_generate_v2(request):
     # レスポンスヘッダーの設定
     response_headers = {
         'Access-Control-Allow-Origin': '*',
+        'Content-Control': 'no-cache', # キャッシュを無効にする (デバッグ用)
+        'Pragma': 'no-cache',
+        'Expires': '0',
         'Content-Type': 'model/gltf-binary' 
     }
 
@@ -67,13 +69,13 @@ def model_generate_v2(request):
         return (json.dumps({'error': error_message}), 400, response_headers)
 
     try:
-        # --- Cloud Storage からファイルを読み込むロジック ---
+        # Cloud Storage からファイルを読み込むロジック
         gcs_file_path = f"uploads/{received_task_id}.{received_file_extension}" 
         
         bucket = storage_client.bucket(GCS_BUCKET_NAME)
         blob = bucket.blob(gcs_file_path)
 
-        # ★★★ ファイルが存在しない場合の、リトライロジックを追加 ★★★
+        # ファイルが存在しない場合の、リトライロジック
         max_retries = 5 # 最大リトライ回数
         retry_delay_seconds = 2 # リトライ間の待機時間 (秒)
 
@@ -93,9 +95,9 @@ def model_generate_v2(request):
             return (json.dumps({'error': error_message}), 404, response_headers)
 
         file_contents = blob.download_as_bytes()
-        print(f"File '{gcs_file_path}' downloaded from GCS. Size: {len(file_contents)} bytes")
+        print(f"DEBUG: Type of file_contents: {type(file_contents)}, Length: {len(file_contents)} bytes")
 
-        # 2. 読み込んだファイルを /tmp ディレクトリに保存
+        # 読み込んだファイルを /tmp ディレクトリに保存
         local_temp_file_path = os.path.join("/tmp", f"{received_task_id}.{received_file_extension}")
         with open(local_temp_file_path, "wb") as f:
             f.write(file_contents)
@@ -128,8 +130,10 @@ def model_generate_v2(request):
         # 1. バッファ (実際のバイナリデータ: 頂点とインデックスを結合)
         vertex_buffer_byte_offset = 0
         vertex_buffer_bytes = vertices.tobytes()
-        index_buffer_byte_offset = len(index_buffer_bytes)
+        
+        # ★★★ ここを修正: index_buffer_bytes の定義を先に移動 ★★★
         index_buffer_bytes = indices.tobytes()
+        index_buffer_byte_offset = len(index_buffer_bytes) 
 
         buffer_data = vertex_buffer_bytes + index_buffer_bytes
         buffer = Buffer(byteLength=len(buffer_data))
