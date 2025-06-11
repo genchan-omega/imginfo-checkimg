@@ -6,7 +6,7 @@ from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node
 from google.cloud import storage 
 import os 
 import io 
-import time # sleepのため
+import time 
 
 # Cloud Storage クライアントの初期化
 storage_client = storage.Client()
@@ -36,7 +36,7 @@ def model_generate_v2(request):
     # レスポンスヘッダーの設定
     response_headers = {
         'Access-Control-Allow-Origin': '*',
-        'Content-Control': 'no-cache', # キャッシュを無効にする (デバッグ用)
+        'Content-Control': 'no-cache', 
         'Pragma': 'no-cache',
         'Expires': '0',
         'Content-Type': 'model/gltf-binary' 
@@ -76,8 +76,8 @@ def model_generate_v2(request):
         blob = bucket.blob(gcs_file_path)
 
         # ファイルが存在しない場合の、リトライロジック
-        max_retries = 5 # 最大リトライ回数
-        retry_delay_seconds = 2 # リトライ間の待機時間 (秒)
+        max_retries = 5 
+        retry_delay_seconds = 2 
 
         for attempt in range(max_retries):
             print(f"Cloud Functions: Attempting to download from GCS path: gs://{GCS_BUCKET_NAME}/{gcs_file_path} (Attempt {attempt + 1}/{max_retries})")
@@ -86,9 +86,9 @@ def model_generate_v2(request):
                 break
             else:
                 print(f"Cloud Functions: File '{gcs_file_path}' not found on attempt {attempt + 1}. Retrying in {retry_delay_seconds} seconds...")
-                time.sleep(retry_delay_seconds) # 数秒待機
+                time.sleep(retry_delay_seconds) 
 
-        if not blob.exists(): # 全リトライ後も見つからなければエラー
+        if not blob.exists(): 
             error_message = f"File not found in GCS after {max_retries} attempts: gs://{GCS_BUCKET_NAME}/{gcs_file_path}. Please check filename or upload status. (Expected path: {gcs_file_path})"
             print(f"Error: {error_message}")
             response_headers['Content-Type'] = 'application/json'
@@ -131,8 +131,7 @@ def model_generate_v2(request):
         vertex_buffer_byte_offset = 0
         vertex_buffer_bytes = vertices.tobytes()
         
-        # ★★★ ここを修正: index_buffer_bytes の定義を先に移動 ★★★
-        index_buffer_bytes = indices.tobytes()
+        index_buffer_bytes = indices.tobytes() # 修正済み
         index_buffer_byte_offset = len(index_buffer_bytes) 
 
         buffer_data = vertex_buffer_bytes + index_buffer_bytes
@@ -183,9 +182,11 @@ def model_generate_v2(request):
         gltf.asset = Asset(version="2.0", generator="pygltflib")
 
         # --- GLB (glTF Binary) バイナリデータを生成してHTTPレスポンスとして返す ---
-        gltf.binary_blob = buffer_data 
-        glb_buffer = io.BytesIO()
-        gltf.save(glb_buffer) 
+        # ★★★ ここを修正 ★★★
+        # gltf.binary_blob = buffer_data の設定はそのまま
+        # glb_buffer = io.BytesIO() はそのまま
+        # gltf.save() メソッドを、ファイルオブジェクトとbinchunk引数で呼び出す
+        gltf.save(glb_buffer, binchunk=buffer_data) # binchunk引数を再度追加
         glb_data = glb_buffer.getvalue() 
 
         # 成功時のレスポンス
