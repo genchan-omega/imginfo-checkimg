@@ -5,14 +5,14 @@ steps:
     - gcloud
     - functions
     - deploy
-    - model_generate_v2
+    - imginfo-checkimg
     - --source=.
     - --runtime=python311
     - --trigger-http
     - --allow-unauthenticated
-    - --entry-point=model_generate_v2
+    - --entry-point=imginfo-checkimg
     - --region=asia-northeast1
-    - --set-env-vars=GCS_BUCKET_NAME=model-raw-img
+    - --set-env-vars=GCS_BUCKET_NAME=checkimg
 # 以下を追加
 options:
   default_logs_bucket_behavior: REGIONAL_USER_OWNED_BUCKET

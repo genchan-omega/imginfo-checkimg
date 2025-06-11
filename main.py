@@ -4,10 +4,6 @@ import functions_framework
 import json
 from google.cloud import storage 
 import os 
-# 画像をそのまま返すため、以下のモジュールは不要なので削除
-# import numpy as np 
-# from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
-# import io 
 
 # Cloud Storage クライアントの初期化
 storage_client = storage.Client()
@@ -106,7 +102,7 @@ def model_generate_v2(request):
         
         response_headers['Content-Type'] = image_mime_type 
 
-        return (file_contents, 200, response_headers) # バイナリデータとヘッダーを返す
+        return (file_contents, 200, response_headers)
 
     except Exception as e:
         # エラー発生時のログ出力とJSONエラーレスポンス
