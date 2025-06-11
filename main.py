@@ -80,7 +80,14 @@ def model_generate_v2(request):
             return (json.dumps({'error': error_message}), 404, response_headers)
 
         file_contents = blob.download_as_bytes()
-        print(f"File '{gcs_file_path}' downloaded from GCS. Size: {len(file_contents)} bytes")
+        # ★追加: file_contentsの型とサイズをログに出力して確認
+        print(f"DEBUG: Type of file_contents: {type(file_contents)}, Length: {len(file_contents)} bytes")
+
+        # 2. 読み込んだファイルを /tmp ディレクトリに保存
+        local_temp_file_path = os.path.join("/tmp", f"{received_task_id}.{received_file_extension}")
+        with open(local_temp_file_path, "wb") as f:
+            f.write(file_contents) # file_contentsはbytesであるべき
+        print(f"File successfully saved to local /tmp: {local_temp_file_path}")
 
         # --- 固定の立方体 GLB モデルの頂点データとインデックスデータを作成 ---
         vertices = np.array([
@@ -109,7 +116,7 @@ def model_generate_v2(request):
         # 1. バッファ (実際のバイナリデータ: 頂点とインデックスを結合)
         vertex_buffer_byte_offset = 0
         vertex_buffer_bytes = vertices.tobytes()
-        index_buffer_byte_offset = len(vertex_buffer_bytes)
+        index_buffer_byte_offset = len(index_buffer_bytes)
         index_buffer_bytes = indices.tobytes()
 
         buffer_data = vertex_buffer_bytes + index_buffer_bytes
@@ -121,11 +128,9 @@ def model_generate_v2(request):
             buffer=0, byteOffset=vertex_buffer_byte_offset, byteLength=len(vertex_buffer_bytes), target=34962)
         gltf.bufferViews.append(buffer_view_vertices)
 
-        # ★★★ ここが修正箇所です ★★★
         buffer_view_indices = BufferView(
             buffer=0, byteOffset=index_buffer_byte_offset, byteLength=len(index_buffer_bytes), target=34963)
-        gltf.bufferViews.append(buffer_view_indices) # ← 正しいリストに append する
-
+        gltf.bufferViews.append(buffer_view_indices)
 
         # 3. アクセサ (バッファビュー内のデータへのアクセス方法を定義)
         accessor_vertices = Accessor(
