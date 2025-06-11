@@ -5,6 +5,7 @@ import numpy as np
 from pygltflib import GLTF2, Buffer, BufferView, Accessor, Mesh, Primitive, Node, Scene, Asset
 from google.cloud import storage 
 import os 
+import io # ★追加: io モジュールをインポート
 
 # Cloud Storage クライアントの初期化
 storage_client = storage.Client()
@@ -122,22 +123,16 @@ def model_generate_v2(request):
 
         buffer_view_indices = BufferView(
             buffer=0, byteOffset=index_buffer_byte_offset, byteLength=len(index_buffer_bytes), target=34963)
-        gltf.buffers.append(buffer_view_indices) # This was the line with the previous bug in my full code version.
+        gltf.buffers.append(buffer_view_indices)
 
         # 3. アクセサ (バッファビュー内のデータへのアクセス方法を定義)
-        # ★★★ ここを修正 ★★★
         accessor_vertices = Accessor(
-            bufferView=0, # buffer=0 を削除
-            byteOffset=0,
-            componentType=5126, count=len(vertices), type='VEC3',
+            bufferView=0, byteOffset=0, componentType=5126, count=len(vertices), type='VEC3',
             max=vertices.max(axis=0).tolist(), min=vertices.min(axis=0).tolist())
         gltf.accessors.append(accessor_vertices)
 
-        # ★★★ ここも修正 ★★★
         accessor_indices = Accessor(
-            bufferView=1, # buffer=0 を削除
-            byteOffset=0,
-            componentType=5123, count=len(indices), type='SCALAR',
+            bufferView=1, byteOffset=0, componentType=5123, count=len(indices), type='SCALAR',
             max=[int(indices.max())], min=[int(indices.min())])
         gltf.accessors.append(accessor_indices)
 
@@ -147,7 +142,6 @@ def model_generate_v2(request):
             indices=1, 
             mode=4 
         )
-        # メッシュはプリミティブのリストを保持
         mesh = Mesh(primitives=[primitive])
         gltf.meshes.append(mesh)
 
@@ -166,8 +160,11 @@ def model_generate_v2(request):
         gltf.asset = Asset(version="2.0", generator="pygltflib")
 
         # --- GLB (glTF Binary) バイナリデータを生成してHTTPレスポンスとして返す ---
-        glb_data = gltf.save_json(filename=None, binchunk=buffer_data)
-
+        # ★★★ ここが修正箇所です ★★★
+        # io.BytesIOを使い、gltf.save()でメモリに書き込み、その内容を取得する
+        glb_buffer = io.BytesIO()
+        gltf.save(glb_buffer, binchunk=buffer_data) # save()メソッドを呼び出す
+        glb_data = glb_buffer.getvalue() # 書き込んだ内容を取得
 
         # 成功時のレスポンス
         return glb_data, 200, response_headers
